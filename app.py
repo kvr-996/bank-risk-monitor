@@ -28,6 +28,19 @@ from bank_risk.scoring import Params
 st.set_page_config(page_title="Bank Risk Monitor", page_icon="🏦", layout="wide",
                    initial_sidebar_state="expanded")
 
+_cfg = ROOT / ".streamlit" / "config.toml"
+if not _cfg.exists():          # takes effect on the next restart
+    try:
+        _cfg.parent.mkdir(exist_ok=True)
+        _cfg.write_text('[theme]\nbase = "light"\nprimaryColor = "#1e4fa3"\nbackgroundColor = "#f4f7fb"\n'
+                        'secondaryBackgroundColor = "#e9eff7"\ntextColor = "#1b2a41"\n', encoding="utf-8")
+    except OSError:
+        pass
+try:
+    DARK_THEME = st.context.theme.type == "dark"
+except Exception:  # noqa: BLE001  (older Streamlit)
+    DARK_THEME = False
+
 # ----------------------------------------------------------------------------- palette
 NAVY, BLUE, INK, MUTED, LINE = "#0f2a4a", "#1e4fa3", "#1b2a41", "#53647c", "#d9e1ec"
 BAND = {  # fg = text, bg = soft tint, solid = strong accent
@@ -152,6 +165,35 @@ header[data-testid="stHeader"] {{ background:transparent; }}
 """, unsafe_allow_html=True)
 
 
+st.markdown("""
+<style>
+/* buttons: newer Streamlit uses data-testid="stBaseButton-*" */
+.stApp button[data-testid^="stBaseButton"], [data-testid="stFileUploaderDropzone"] button {
+  background:#ffffff !important; color:#174ea6 !important; border:1.5px solid #8ea6c6 !important; opacity:1 !important;
+}
+.stApp button[data-testid^="stBaseButton"] *, [data-testid="stFileUploaderDropzone"] button * { color:#174ea6 !important; }
+.stApp button[data-testid^="stBaseButton"]:hover, [data-testid="stFileUploaderDropzone"] button:hover {
+  background:#eaf1fb !important; border-color:#1e4fa3 !important;
+}
+.stApp button[data-testid="stBaseButton-primary"] { background:#1e4fa3 !important; border-color:#1e4fa3 !important; }
+.stApp button[data-testid="stBaseButton-primary"] * { color:#ffffff !important; }
+.stApp button[data-testid="stBaseButton-primary"]:hover { background:#163d80 !important; }
+.stApp button:disabled { opacity:.55 !important; }
+
+/* read-only tables (plain HTML, always light) */
+.tbl-wrap { overflow:auto; background:#ffffff; border:1px solid #d9e1ec; border-radius:10px; margin-bottom:.6rem; }
+.tbl-wrap table { border-collapse:collapse; width:100%; font-size:.86rem; color:#172b4d; }
+.tbl-wrap th { position:sticky; top:0; z-index:1; background:#e9eff7; color:#0f2a4a; text-align:left; padding:.55rem .75rem;
+               font-weight:700; white-space:nowrap; border-bottom:2px solid #c5d2e3; }
+.tbl-wrap td { padding:.45rem .75rem; border-bottom:1px solid #e6ecf4; color:#172b4d; white-space:nowrap; }
+.tbl-wrap tbody tr:nth-child(even) td { background:#f8fafd; }
+.tbl-wrap tbody tr:hover td { background:#eef4fc; }
+</style>
+""", unsafe_allow_html=True)
+if DARK_THEME:   # canvas grids ignore CSS colours; flip them back to light if the dark theme is active
+    st.markdown("<style>[data-testid='stDataEditor']{filter:invert(1) hue-rotate(180deg);background:#fff;}</style>",
+                unsafe_allow_html=True)
+
 # ----------------------------------------------------------------------------- helpers
 def pill(text: str, band: str) -> str:
     s = BAND.get(band, BAND["Insufficient data"])
@@ -183,16 +225,25 @@ def cell_style(v):
     return ""
 
 
+def light_table(df: pd.DataFrame, index: bool = False, precision: int = 2, colour_cols=(), bar_cols=(), max_h: int = 520):
+    """Read-only table rendered as HTML so it is always visible, whatever the Streamlit theme."""
+    colour_cols = [c for c in colour_cols if c in df.columns]
+    bar_cols = [c for c in bar_cols if c in df.columns]
+    sty = df.style.format(precision=precision, na_rep="–", escape="html")
+    if colour_cols:
+        sty = sty.map(cell_style, subset=colour_cols)
+    if bar_cols:
+        sty = sty.bar(subset=bar_cols, vmin=0, vmax=100, color="#b9cff0")
+    if not index:
+        sty = sty.hide(axis="index")
+    flat = " ".join(sty.to_html().split())
+    st.markdown(f'<div class="tbl-wrap" style="max-height:{max_h}px">{flat}</div>', unsafe_allow_html=True)
+
+
 def show_table(df: pd.DataFrame, cols: list[str]):
     cols = [c for c in cols if c in df.columns]
     sub = [c for c in ("risk_tier", "risk_band", "z_zone", "m_flag_a", "m_flag_b") if c in cols]
-    styled = df[cols].style.map(cell_style, subset=sub).format(precision=2, na_rep="–")
-    cfg = {}
-    if "risk_score" in cols:
-        cfg["risk_score"] = st.column_config.ProgressColumn("Risk score", min_value=0, max_value=100, format="%.0f")
-    if "anomaly_percentile" in cols:
-        cfg["anomaly_percentile"] = st.column_config.ProgressColumn("Anomaly pctl", min_value=0, max_value=100, format="%.0f")
-    st.dataframe(styled, width="stretch", hide_index=True, column_config=cfg)
+    light_table(df[cols], colour_cols=sub, bar_cols=("risk_score", "anomaly_percentile"))
 
 
 def band_cards(df: pd.DataFrame):
@@ -438,7 +489,7 @@ def render_assessment(res: dict):
             st.caption("No issues found.")
     with st.expander("Component ratios and assumptions"):
         comp = pd.DataFrame({"value": res["components"]}).rename_axis("component")
-        st.dataframe(comp.style.format(precision=3, na_rep="–"), width="stretch")
+        light_table(comp.reset_index(), precision=3)
         if res["input_notes"]:
             st.caption("Derived / assumed: " + res["input_notes"])
 
@@ -556,7 +607,7 @@ with tab_batch:
     if raw is not None:
         st.divider()
         with st.expander(f"Input preview ({len(raw)} rows)"):
-            st.dataframe(raw.head(50), width="stretch")
+            light_table(raw.head(50))
         try:
             pred, warns = score_frame(raw, params, strict=False)
         except ValueError as e:
@@ -595,7 +646,7 @@ with tab_val:
     for col, (name, val) in zip(cols, auc.items()):
         col.markdown(kpi(f"AUC · {name}", "n/a" if val is None else f"{val:.2f}", "1.0 = perfect ranking, 0.5 = chance", BLUE), unsafe_allow_html=True)
     st.markdown("")
-    st.dataframe(pd.read_csv(v).style.format(precision=3, na_rep="–"), width="stretch", hide_index=True)
+    light_table(pd.read_csv(v), precision=3)
 
     st.markdown("### Early-warning model")
     (st.success if ew.get("validated") else st.warning)(ew["note"])
@@ -617,12 +668,11 @@ with tab_about:
     c1, c2 = st.columns([3, 2], gap="large")
     with c1:
         st.markdown("### How the risk score is built")
-        st.dataframe(pd.DataFrame({
+        light_table(pd.DataFrame({
             "Component": ["Altman Z''-EM", "Beneish M-score", "Anomaly model", "Early-warning model"],
             "Weight": ["35%", "20%", "25%", "20% (off until validated)"],
             "What it measures": ["Financial strength: Safe > 5.85, Distress < 4.35", "Earnings-quality / manipulation signal, flag above -1.78",
-                                 "How unusual the financial pattern is vs. training banks (Isolation Forest)", "Probability of a distress event within a year"]}),
-            width="stretch", hide_index=True)
+                                 "How unusual the financial pattern is vs. training banks (Isolation Forest)", "Probability of a distress event within a year"]}))
         st.markdown("Weights are a judgement call, not learned. **Low** < 33 ≤ **Medium** < 66 ≤ **High**. Merger years are capped at Medium "
                     "because Beneish indices are not comparable across a merger.")
     with c2:
