@@ -1,0 +1,14 @@
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+scipy>=1.11
+joblib>=1.3
+openpyxl>=3.1
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart>=0.0.9
+httpx>=0.27
+matplotlib>=3.8
+pytest>=8.0
+jupyter
+streamlit>=1.50

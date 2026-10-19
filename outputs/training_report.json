@@ -1,0 +1,78 @@
+{
+  "trained_at": "2026-10-19T06:43:03+00:00",
+  "n_rows": 54,
+  "n_banks": 6,
+  "anomaly": {
+    "features": [
+      "z_em",
+      "x1_liquidity",
+      "x2_reserves_ta",
+      "x3_profit_ta",
+      "x4_mcap_liab",
+      "m_score",
+      "dsri",
+      "gmi",
+      "aqi",
+      "sgi",
+      "depi",
+      "sgai",
+      "lvgi",
+      "tata",
+      "gnpa",
+      "nnpa",
+      "crar",
+      "roa",
+      "equity_ta",
+      "d_gnpa_pp"
+    ],
+    "n_estimators": 500
+  },
+  "early_warning": {
+    "trained": true,
+    "validated": false,
+    "n_positive_rows": 2,
+    "n_negative_rows": 52,
+    "n_distressed_banks": 1,
+    "horizon_years": 1,
+    "standardised_coefficients": {
+      "z_em": -1.0655,
+      "m_score": 1.165,
+      "gnpa": 0.0026,
+      "nnpa": 0.3832,
+      "crar": -0.0967,
+      "roa": -0.1993,
+      "d_gnpa_pp": 0.7187
+    },
+    "note": "In-sample only. With 1 distressed bank(s) a leave-one-bank-out test removes every positive, so no out-of-sample performance can be reported. Add more labelled events (data/events.csv) and retrain before relying on this output."
+  },
+  "validation_auc": {
+    "-Z''-EM": 0.9778,
+    "M-score": 0.7609,
+    "Anomaly score": 0.9712
+  },
+  "params": {
+    "w_x1": 6.56,
+    "w_x2": 3.26,
+    "w_x3": 6.72,
+    "w_x4": 1.05,
+    "em_constant": 3.25,
+    "z_safe": 5.85,
+    "z_distress": 4.35,
+    "m_intercept": -4.84,
+    "m_dsri": 0.92,
+    "m_gmi": 0.528,
+    "m_aqi": 0.404,
+    "m_sgi": 0.892,
+    "m_depi": 0.115,
+    "m_sgai": -0.172,
+    "m_tata": 4.679,
+    "m_lvgi": -0.327,
+    "m_cutoff_a": -1.78,
+    "m_cutoff_b": -2.22,
+    "joint_cutoff": 1,
+    "x3_definition": 1,
+    "receivables_proxy": 2,
+    "assumed_tax_rate": 0.25,
+    "neutral_fill": false
+  }
+}
