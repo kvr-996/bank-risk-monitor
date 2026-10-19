@@ -1,7 +1,8 @@
 """Streamlit front-end for the bank distress & manipulation screener.
 
 Place this file in the project root (next to api.py and train.py) and keep
-.streamlit/config.toml next to it, then run:
+.streamlit/config.toml next to it (it forces a light theme so every widget,
+table and chart is readable), then run:
     streamlit run app.py
 """
 from __future__ import annotations
@@ -24,15 +25,16 @@ from bank_risk.pipeline import (DATA, OUTPUTS, assess_company, read_table, score
 from bank_risk.schema import INVESTOR_OPTIONAL, INVESTOR_REQUIRED, PERCENT_FIELDS, REQUIRED_MINIMUM
 from bank_risk.scoring import Params
 
-st.set_page_config(page_title="Bank Risk Monitor", page_icon="🏦", layout="wide")
+st.set_page_config(page_title="Bank Risk Monitor", page_icon="🏦", layout="wide",
+                   initial_sidebar_state="expanded")
 
 # ----------------------------------------------------------------------------- palette
-NAVY, BLUE, INK, MUTED, LINE = "#0f2a4a", "#1e4fa3", "#1b2a41", "#5b6b82", "#e3e8ef"
+NAVY, BLUE, INK, MUTED, LINE = "#0f2a4a", "#1e4fa3", "#1b2a41", "#53647c", "#d9e1ec"
 BAND = {  # fg = text, bg = soft tint, solid = strong accent
-    "Low": dict(fg="#067647", bg="#d1fadf", solid="#12915b"),
-    "Medium": dict(fg="#93370d", bg="#fef0c7", solid="#dc6803"),
-    "High": dict(fg="#b42318", bg="#fee4e2", solid="#d92d20"),
-    "Insufficient data": dict(fg="#475467", bg="#eaecf0", solid="#667085"),
+    "Low": dict(fg="#05603a", bg="#d1fadf", solid="#12915b"),
+    "Medium": dict(fg="#7a2e0e", bg="#fef0c7", solid="#dc6803"),
+    "High": dict(fg="#912018", bg="#fee4e2", solid="#d92d20"),
+    "Insufficient data": dict(fg="#344054", bg="#eaecf0", solid="#667085"),
 }
 BAND["Watch"] = BAND["Medium"]
 CELL_BAND = {"Safe": "Low", "Grey": "Medium", "Distress": "High", "OK": "Low", "Flag": "High"}
@@ -47,61 +49,104 @@ BAND_MSG = {
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
-:root {{ --navy:{NAVY}; --blue:{BLUE}; --ink:{INK}; --muted:{MUTED}; --line:{LINE}; }}
-/* fonts are applied to text elements only, so icon fonts keep working */
-.stApp, .stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea, .stApp button,
-[data-testid="stMarkdownContainer"] {{ font-family:'DM Sans',-apple-system,'Segoe UI',Roboto,sans-serif; }}
-.stApp h1,.stApp h2,.stApp h3,.stApp h4 {{ font-family:'Manrope','DM Sans',sans-serif; color:var(--navy); letter-spacing:-.02em; }}
-.stApp h3 {{ font-size:1.1rem; font-weight:700; margin:.2rem 0 .6rem; }}
-.block-container {{ padding:1.4rem 2rem 3rem; max-width:1400px; }}
+:root {{ --navy:{NAVY}; --blue:{BLUE}; --ink:{INK}; --muted:{MUTED}; --line:{LINE}; color-scheme: light; }}
+
+/* ---------- base: always light, always readable ---------- */
+html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {{
+  background:#f4f7fb !important; color:var(--ink) !important;
+}}
+.stApp, .stApp p, .stApp li, .stApp label, .stApp input, .stApp textarea, .stApp button {{
+  font-family:'DM Sans',-apple-system,'Segoe UI',Roboto,sans-serif;
+}}
+.stApp h1,.stApp h2,.stApp h3,.stApp h4 {{ font-family:'Manrope','DM Sans',sans-serif; color:var(--navy) !important; letter-spacing:-.02em; }}
+.stApp h3 {{ font-size:1.15rem; font-weight:800; margin:1.2rem 0 .6rem; }}
+.block-container {{ padding:1.2rem 2rem 3rem; max-width:1400px; }}
 header[data-testid="stHeader"] {{ background:transparent; }}
 
-/* sidebar */
-[data-testid="stSidebar"] {{ border-right:1px solid var(--line); }}
-[data-testid="stSidebar"] .block-container, [data-testid="stSidebarUserContent"] {{ padding-top:1rem; }}
+[data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li,
+[data-testid="stWidgetLabel"] p, [data-testid="stWidgetLabel"] label, label p {{ color:var(--ink) !important; }}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {{ color:var(--muted) !important; }}
 
-/* tabs */
-[data-testid="stTabs"] [role="tablist"] {{ gap:.25rem; border-bottom:1px solid var(--line); }}
-[data-testid="stTabs"] button[role="tab"] {{ padding:.65rem 1rem; font-weight:600; color:var(--muted); }}
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ color:var(--blue); }}
-[data-testid="stTabs"] [role="tabpanel"] {{ padding-top:1.1rem; }}
+/* ---------- sidebar ---------- */
+[data-testid="stSidebar"] {{ background:#ffffff !important; border-right:1px solid var(--line); }}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+[data-testid="stSidebar"] label p {{ color:var(--ink) !important; }}
+[data-testid="stSidebar"] h3 {{ margin-top:0; }}
 
-/* hero */
-.hero {{ background:linear-gradient(115deg,#0f2a4a 0%,#17407a 70%,#1e4fa3 100%); border-radius:16px;
-         padding:1.35rem 1.6rem; margin-bottom:.9rem; color:#fff; }}
-.hero .eyebrow {{ color:#a9c8f5; font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; font-weight:700; }}
-.hero .title {{ font-family:'Manrope',sans-serif; font-size:1.7rem; font-weight:800; letter-spacing:-.03em; margin:.25rem 0; color:#fff; }}
-.hero .copy {{ color:#d6e4f7; max-width:860px; font-size:.95rem; }}
-.notice {{ background:#fffaeb; border:1px solid #fedf89; color:#7a4a05; border-radius:10px; padding:.6rem .9rem;
-           font-size:.86rem; margin-bottom:1rem; }}
+/* ---------- tabs ---------- */
+[data-testid="stTabs"] [role="tablist"] {{ gap:.35rem; border-bottom:2px solid var(--line); }}
+[data-testid="stTabs"] button[role="tab"] {{ padding:.7rem 1.15rem; font-weight:700; font-size:.95rem; color:var(--muted) !important; }}
+[data-testid="stTabs"] button[role="tab"] p {{ color:inherit !important; font-weight:700; }}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {{ color:var(--blue) !important; }}
+[data-testid="stTabs"] [role="tabpanel"] {{ padding-top:1.2rem; }}
 
-/* cards */
-.kpi {{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:.95rem 1.1rem; min-height:122px;
-        display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 1px 3px rgba(15,42,74,.05); }}
-.kpi-l {{ font-size:.72rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }}
-.kpi-v {{ font-family:'Manrope',sans-serif; font-size:1.95rem; font-weight:800; color:var(--navy); line-height:1.1; }}
-.kpi-v small {{ font-size:.9rem; font-weight:600; color:var(--muted); margin-left:.25rem; }}
-.kpi-s {{ font-size:.82rem; color:var(--muted); min-height:1.4rem; }}
-.pill {{ display:inline-block; padding:2px 10px; border-radius:99px; font-weight:700; font-size:.78rem; }}
-.verdict {{ border-radius:12px; padding:.85rem 1.1rem; margin:.4rem 0 1rem; display:flex; gap:.9rem; align-items:center; }}
-.verdict b {{ font-family:'Manrope',sans-serif; font-size:1.05rem; }}
-.meter {{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:.9rem 1.2rem 1rem; margin:1rem 0; }}
-.meter-top {{ display:flex; justify-content:space-between; font-size:.8rem; font-weight:700; color:var(--muted);
-              text-transform:uppercase; letter-spacing:.07em; margin-bottom:.7rem; }}
+/* ---------- hero ---------- */
+.hero {{ background:linear-gradient(115deg,#0f2a4a 0%,#17407a 65%,#1e4fa3 100%); border-radius:18px;
+         padding:1.5rem 1.8rem; margin-bottom:.9rem; box-shadow:0 6px 20px rgba(15,42,74,.18); }}
+.hero .eyebrow {{ color:#b9d3f7 !important; font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; font-weight:700; }}
+.hero .title {{ font-family:'Manrope',sans-serif; font-size:1.85rem; font-weight:800; letter-spacing:-.03em; margin:.3rem 0; color:#ffffff !important; }}
+.hero .copy {{ color:#e3eefc !important; max-width:880px; font-size:.97rem; line-height:1.5; }}
+.notice {{ background:#fffaeb; border:1px solid #fedf89; border-left:5px solid #f79009; color:#6b3f04 !important;
+           border-radius:10px; padding:.65rem 1rem; font-size:.87rem; margin-bottom:1.1rem; }}
+.notice b {{ color:#6b3f04 !important; }}
+
+/* ---------- cards ---------- */
+.kpi {{ background:#ffffff; border:1px solid var(--line); border-radius:14px; padding:1rem 1.15rem; min-height:128px;
+        display:flex; flex-direction:column; justify-content:space-between; box-shadow:0 2px 6px rgba(15,42,74,.06); }}
+.kpi-l {{ font-size:.73rem; font-weight:700; color:var(--muted) !important; text-transform:uppercase; letter-spacing:.07em; }}
+.kpi-v {{ font-family:'Manrope',sans-serif; font-size:2rem; font-weight:800; color:var(--navy) !important; line-height:1.1; margin:.2rem 0; }}
+.kpi-v small {{ font-size:.9rem; font-weight:600; color:var(--muted) !important; margin-left:.25rem; }}
+.kpi-s {{ font-size:.82rem; color:var(--muted) !important; min-height:1.4rem; }}
+.pill {{ display:inline-block; padding:2px 11px; border-radius:99px; font-weight:700; font-size:.78rem; }}
+.verdict {{ border-radius:12px; padding:1rem 1.2rem; margin:.4rem 0 1rem; display:flex; flex-wrap:wrap; gap:.4rem 1rem; align-items:center; }}
+.verdict b {{ font-family:'Manrope',sans-serif; font-size:1.2rem; }}
+.meter {{ background:#ffffff; border:1px solid var(--line); border-radius:14px; padding:.95rem 1.25rem 1.05rem; margin:1rem 0;
+          box-shadow:0 2px 6px rgba(15,42,74,.06); }}
+.meter-top {{ display:flex; justify-content:space-between; font-size:.8rem; font-weight:700; color:var(--muted) !important;
+              text-transform:uppercase; letter-spacing:.07em; margin-bottom:.8rem; }}
 .meter-wrap {{ position:relative; }}
 .meter-segs {{ display:flex; height:12px; border-radius:99px; overflow:hidden; }}
 .meter-marker {{ position:absolute; top:-6px; width:6px; height:24px; background:var(--navy); border:2px solid #fff;
-                 border-radius:4px; transform:translateX(-50%); box-shadow:0 1px 4px rgba(0,0,0,.35); }}
-.meter-scale {{ display:flex; font-size:.75rem; color:var(--muted); margin-top:.4rem; }}
-.step {{ font-family:'Manrope',sans-serif; font-weight:700; color:var(--navy); margin:.2rem 0 .1rem; font-size:1rem; }}
-.step span {{ background:var(--blue); color:#fff; border-radius:99px; padding:1px 9px; margin-right:.5rem; font-size:.8rem; }}
-.hint {{ color:var(--muted); font-size:.85rem; margin-bottom:.6rem; }}
+                 border-radius:4px; transform:translateX(-50%); box-shadow:0 1px 4px rgba(0,0,0,.4); }}
+.meter-scale {{ display:flex; font-size:.75rem; color:var(--muted) !important; margin-top:.45rem; }}
+.step {{ font-family:'Manrope',sans-serif; font-weight:800; color:var(--navy) !important; margin:.2rem 0 .15rem; font-size:1.05rem; }}
+.step span {{ background:var(--blue); color:#ffffff !important; border-radius:99px; padding:2px 10px; margin-right:.55rem; font-size:.8rem; }}
+.hint {{ color:var(--muted) !important; font-size:.87rem; margin-bottom:.6rem; line-height:1.45; }}
+.empty {{ background:#ffffff; border:2px dashed #b9c7da; border-radius:14px; padding:1.6rem; text-align:center;
+          color:var(--muted) !important; margin-top:.6rem; }}
+.empty b {{ color:var(--navy) !important; font-family:'Manrope',sans-serif; font-size:1.05rem; }}
 
-/* native widgets */
+/* ---------- containers, expanders, tables ---------- */
 [data-testid="stVerticalBlockBorderWrapper"] {{ border-radius:14px; }}
-.stButton>button, .stDownloadButton>button {{ border-radius:9px; min-height:2.6rem; font-weight:650; }}
-[data-testid="stDataFrame"], [data-testid="stDataEditor"] {{ border:1px solid var(--line); border-radius:10px; overflow:hidden; }}
-[data-testid="stExpander"] {{ border-radius:11px; background:#fff; }}
+[data-testid="stVerticalBlockBorderWrapper"]:has(> div > [data-testid="stVerticalBlock"]) {{ border-color:var(--line); }}
+[data-testid="stExpander"] {{ border-radius:12px; background:#ffffff !important; border:1px solid var(--line) !important; }}
+[data-testid="stExpander"] summary, [data-testid="stExpander"] summary * {{ color:var(--ink) !important; font-weight:600; }}
+[data-testid="stDataFrame"], [data-testid="stDataEditor"] {{ border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#ffffff; }}
+[data-testid="stFileUploaderDropzone"] {{ background:#ffffff !important; border:2px dashed #9fb3cf !important; border-radius:12px; }}
+[data-testid="stFileUploaderDropzone"] * {{ color:var(--ink) !important; }}
+
+/* ---------- inputs ---------- */
+.stApp input, .stApp textarea, [data-baseweb="select"] > div, [data-baseweb="input"] > div {{
+  background:#ffffff !important; color:#172b4d !important; border-color:#a9b9cf !important;
+}}
+.stApp input::placeholder {{ color:#6b7a90 !important; opacity:1 !important; }}
+[data-baseweb="popover"], [data-baseweb="menu"], [role="listbox"], [role="option"] {{ background:#ffffff !important; color:#172b4d !important; }}
+[role="option"] * {{ color:#172b4d !important; }}
+[data-baseweb="tag"] {{ background:#dbe7f8 !important; }}
+[data-baseweb="tag"] * {{ color:#0f2a4a !important; }}
+
+/* ---------- buttons ---------- */
+.stButton>button, .stDownloadButton>button {{
+  border-radius:10px; min-height:2.7rem; font-weight:700; color:#174ea6 !important; background:#ffffff !important; border:1.5px solid #8ea6c6 !important;
+}}
+.stButton>button p, .stDownloadButton>button p {{ color:inherit !important; font-weight:700; }}
+.stButton>button:hover, .stDownloadButton>button:hover {{ background:#eaf1fb !important; border-color:var(--blue) !important; color:var(--navy) !important; }}
+.stButton>button[kind="primary"] {{ background:var(--blue) !important; color:#ffffff !important; border-color:var(--blue) !important; font-size:1.02rem; }}
+.stButton>button[kind="primary"] p {{ color:#ffffff !important; }}
+.stButton>button[kind="primary"]:hover {{ background:#163d80 !important; color:#ffffff !important; }}
+
+[data-testid="stAlert"] {{ border-radius:10px; }}
 @media(max-width:768px) {{ .block-container{{padding:1rem;}} .hero .title{{font-size:1.35rem;}} }}
 </style>
 """, unsafe_allow_html=True)
@@ -142,7 +187,12 @@ def show_table(df: pd.DataFrame, cols: list[str]):
     cols = [c for c in cols if c in df.columns]
     sub = [c for c in ("risk_tier", "risk_band", "z_zone", "m_flag_a", "m_flag_b") if c in cols]
     styled = df[cols].style.map(cell_style, subset=sub).format(precision=2, na_rep="–")
-    st.dataframe(styled, width="stretch", hide_index=True)
+    cfg = {}
+    if "risk_score" in cols:
+        cfg["risk_score"] = st.column_config.ProgressColumn("Risk score", min_value=0, max_value=100, format="%.0f")
+    if "anomaly_percentile" in cols:
+        cfg["anomaly_percentile"] = st.column_config.ProgressColumn("Anomaly pctl", min_value=0, max_value=100, format="%.0f")
+    st.dataframe(styled, width="stretch", hide_index=True, column_config=cfg)
 
 
 def band_cards(df: pd.DataFrame):
@@ -150,14 +200,21 @@ def band_cards(df: pd.DataFrame):
     total = max(len(df), 1)
     for col, t in zip(cols, ["High", "Medium", "Low", "Insufficient data"]):
         n = int((df["risk_band"] == t).sum())
-        col.markdown(kpi(f"{t}" if t != "Insufficient data" else "Insufficient data", str(n),
-                         f"{n / total:.0%} of bank-years", BAND[t]["solid"]), unsafe_allow_html=True)
+        col.markdown(kpi(t, str(n), f"{n / total:.0%} of bank-years", BAND[t]["solid"]), unsafe_allow_html=True)
 
 
-def style_chart(ch: alt.Chart | alt.LayerChart) -> alt.Chart:
-    return (ch.configure_axis(labelColor=MUTED, titleColor=MUTED, gridColor="#e8edf3", domainColor=LINE, titleFontWeight=600)
-              .configure_legend(labelColor=INK, orient="bottom", title=None)
-              .configure_view(strokeWidth=0))
+def style_chart(ch):
+    return (ch.configure(background="#ffffff", padding={"left": 8, "right": 12, "top": 10, "bottom": 6})
+              .configure_axis(labelColor=INK, titleColor=INK, gridColor="#e6ecf4", domainColor="#b9c7da", tickColor="#b9c7da",
+                              titleFontWeight=600, labelFontSize=12, titleFontSize=12)
+              .configure_legend(labelColor=INK, orient="bottom", title=None, labelFontSize=12)
+              .configure_view(strokeWidth=0, fill="#ffffff"))
+
+
+def show_chart(ch):
+    """Render a chart inside a bordered white card with our own (non-Streamlit) theme."""
+    with st.container(border=True):
+        st.altair_chart(ch, width="stretch", theme=None)
 
 
 def _bank_color():
@@ -171,17 +228,18 @@ def _prep(df: pd.DataFrame, col: str) -> pd.DataFrame:
 
 
 def _ref_line(y: float, color: str, label: str):
-    rule = alt.Chart(pd.DataFrame({"y": [y], "t": [label]})).mark_rule(strokeDash=[5, 4], color=color, strokeWidth=1.5).encode(y="y:Q")
-    txt = alt.Chart(pd.DataFrame({"y": [y], "t": [label]})).mark_text(align="left", baseline="bottom", dx=2, dy=-3, color=color,
-                                                                      fontSize=11, fontWeight=600).encode(y="y:Q", text="t:N", x=alt.value(4))
+    data = pd.DataFrame({"y": [y], "t": [label]})
+    rule = alt.Chart(data).mark_rule(strokeDash=[5, 4], color=color, strokeWidth=1.6).encode(y="y:Q")
+    txt = alt.Chart(data).mark_text(align="left", baseline="bottom", dx=2, dy=-4, color=color, fontSize=11,
+                                    fontWeight=700).encode(y="y:Q", text="t:N", x=alt.value(6))
     return rule + txt
 
 
 def risk_chart(df: pd.DataFrame, height=300):
     d = _prep(df, "risk_score")
-    bands = pd.DataFrame({"lo": [0, 33, 66], "hi": [33, 66, 100], "c": ["#e7f8ee", "#fff4d6", "#fdeceb"]})
+    bands = pd.DataFrame({"lo": [0, 33, 66], "hi": [33, 66, 100], "c": ["#e1f6e9", "#fff1c9", "#fde3e1"]})
     bg = alt.Chart(bands).mark_rect().encode(y=alt.Y("lo:Q", scale=alt.Scale(domain=[0, 100])), y2="hi:Q", color=alt.Color("c:N", scale=None))
-    ln = alt.Chart(d).mark_line(point=alt.OverlayMarkDef(size=60), strokeWidth=2.2).encode(
+    ln = alt.Chart(d).mark_line(point=alt.OverlayMarkDef(size=70), strokeWidth=2.4).encode(
         x=alt.X("fy_label:N", title="Fiscal year", axis=alt.Axis(labelAngle=0)),
         y=alt.Y("risk_score:Q", title="Risk score (0-100)", scale=alt.Scale(domain=[0, 100])), color=_bank_color(),
         tooltip=["bank", "fy_label", alt.Tooltip("risk_score:Q", format=".0f"), "risk_band"])
@@ -190,16 +248,17 @@ def risk_chart(df: pd.DataFrame, height=300):
 
 def z_chart(df: pd.DataFrame, height=300):
     d = _prep(df, "z_em")
-    ln = alt.Chart(d).mark_line(point=True, strokeWidth=2).encode(
+    ln = alt.Chart(d).mark_line(point=alt.OverlayMarkDef(size=60), strokeWidth=2.2).encode(
         x=alt.X("fy_label:N", title="Fiscal year", axis=alt.Axis(labelAngle=0)),
         y=alt.Y("z_em:Q", title="Altman Z''-EM", scale=alt.Scale(zero=False)), color=_bank_color(),
         tooltip=["bank", "fy_label", alt.Tooltip("z_em:Q", format=".2f"), "z_zone"])
-    return style_chart((ln + _ref_line(5.85, BAND["Low"]["solid"], "Safe > 5.85") + _ref_line(4.35, BAND["High"]["solid"], "Distress < 4.35")).properties(height=height))
+    return style_chart((ln + _ref_line(5.85, BAND["Low"]["solid"], "Safe > 5.85")
+                        + _ref_line(4.35, BAND["High"]["solid"], "Distress < 4.35")).properties(height=height))
 
 
 def m_chart(df: pd.DataFrame, cutoff: float, height=300):
     d = _prep(df, "m_score")
-    ln = alt.Chart(d).mark_line(point=True, strokeWidth=2).encode(
+    ln = alt.Chart(d).mark_line(point=alt.OverlayMarkDef(size=60), strokeWidth=2.2).encode(
         x=alt.X("fy_label:N", title="Fiscal year", axis=alt.Axis(labelAngle=0)),
         y=alt.Y("m_score:Q", title="Beneish M-score", scale=alt.Scale(zero=False)), color=_bank_color(),
         tooltip=["bank", "fy_label", alt.Tooltip("m_score:Q", format=".2f"), "m_flag_a"])
@@ -211,13 +270,13 @@ def parts_chart(parts: dict):
     d = pd.DataFrame({"Component": [names[k] for k in parts], "Risk": list(parts.values())})
     d["label"] = d["Risk"].map(lambda v: f"{v:.0f}")
     base = alt.Chart(d).encode(y=alt.Y("Component:N", sort=None, title=None))
-    bars = base.mark_bar(cornerRadiusEnd=5, size=20).encode(
+    bars = base.mark_bar(cornerRadiusEnd=5, size=22).encode(
         x=alt.X("Risk:Q", scale=alt.Scale(domain=[0, 100]), title="Component risk (0 = none, 100 = maximum)"),
         color=alt.Color("Risk:Q", legend=None, scale=alt.Scale(type="threshold", domain=[33, 66],
                                                                 range=[BAND["Low"]["solid"], BAND["Medium"]["solid"], BAND["High"]["solid"]])),
         tooltip=["Component", alt.Tooltip("Risk:Q", format=".0f")])
-    txt = base.mark_text(align="left", dx=5, color=INK, fontWeight=600).encode(x="Risk:Q", text="label:N")
-    return style_chart((bars + txt).properties(height=max(40 * len(d), 120)))
+    txt = base.mark_text(align="left", dx=6, color=INK, fontWeight=700).encode(x="Risk:Q", text="label:N")
+    return style_chart((bars + txt).properties(height=max(46 * len(d), 130)))
 
 
 @st.cache_data(show_spinner="Scoring bundled panel...")
@@ -229,7 +288,7 @@ def get_demo_panel() -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------------------- sidebar
-st.sidebar.markdown("### Analysis settings")
+st.sidebar.markdown("### ⚙️ Analysis settings")
 st.sidebar.caption("Assumptions used by **Assess a bank** and **Bulk analysis**.")
 x3 = st.sidebar.radio("Altman X3 definition", [1, 2], format_func=lambda v: {1: "PBT / total assets", 2: "(PBT + interest) / total assets"}[v])
 recv = st.sidebar.radio("Beneish receivables proxy", [2, 1], format_func=lambda v: {1: "Interest receivable", 2: "Net / gross advances"}[v])
@@ -251,7 +310,7 @@ is not validated (one distressed bank in the panel). Outputs are screening signa
 """, unsafe_allow_html=True)
 
 tab_assess, tab_demo, tab_batch, tab_val, tab_about = st.tabs(
-    ["Assess a bank", "Portfolio overview", "Bulk analysis", "Model validation", "Methodology"])
+    ["🏦 Assess a bank", "📊 Portfolio overview", "📁 Bulk analysis", "✅ Model validation", "📘 Methodology"])
 
 # ============================================================================= Assess a bank
 LABELS = {
@@ -317,7 +376,7 @@ def _reset_form(example: bool):
 def _editors(master: pd.DataFrame, groups: dict, prefix: str, fy_prev: str, fy_cur: str) -> pd.DataFrame:
     cfg = {"Previous FY": st.column_config.NumberColumn(f"Previous ({fy_prev or '-'})", format="%.2f", width="small"),
            "Current FY": st.column_config.NumberColumn(f"Current ({fy_cur or '-'})", format="%.2f", width="small")}
-    cols = st.columns(len(groups))
+    cols = st.columns(len(groups), gap="medium")
     out = []
     for col, (title, fields) in zip(cols, groups.items()):
         with col:
@@ -367,7 +426,7 @@ def render_assessment(res: dict):
             st.markdown("**Score breakdown**")
             parts = {k_: v for k_, v in res["score_parts"].items() if v is not None}
             if parts:
-                st.altair_chart(parts_chart(parts), width="stretch")
+                st.altair_chart(parts_chart(parts), width="stretch", theme=None)
             else:
                 st.caption("No components could be computed.")
 
@@ -404,16 +463,17 @@ with tab_assess:
             b2.button("Clear form", width="stretch", on_click=_reset_form, args=(False,))
 
     # ---- step 2
-    st.markdown('<div class="step" style="margin-top:1.1rem"><span>2</span>Financials</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step" style="margin-top:1.3rem"><span>2</span>Financials</div>', unsafe_allow_html=True)
     st.markdown('<div class="hint">Type or paste into the tables. Percent fields are typed as percents (5 for 5%). '
                 'All 17 core fields are required for both years.</div>', unsafe_allow_html=True)
-    req_tbl = _editors(ss.req_tbl, GROUPS, "req", fy_prev, fy_cur)
+    with st.container(border=True):
+        req_tbl = _editors(ss.req_tbl, GROUPS, "req", fy_prev, fy_cur)
     with st.expander("Additional financials (optional, improves accuracy)"):
         st.caption("Net advances matters most: without it the Beneish receivables proxy is weaker. Blank fields are derived where possible.")
         opt_tbl = _editors(ss.opt_tbl, OPT_GROUPS, "opt", fy_prev, fy_cur)
 
     # ---- step 3
-    st.markdown('<div class="step" style="margin-top:1.1rem"><span>3</span>Run</div>', unsafe_allow_html=True)
+    st.markdown('<div class="step" style="margin-top:1.3rem"><span>3</span>Run</div>', unsafe_allow_html=True)
     if st.button("Run risk assessment", type="primary", width="stretch"):
         if not company.strip():
             ss.assess_out = {"errors": ["Enter a company name."]}
@@ -424,13 +484,16 @@ with tab_assess:
                 ss.assess_out = {"errors": list(e.args[0])}
 
     out = ss.get("assess_out")
-    if out:
-        st.divider()
-        if "errors" in out:
-            for msg in out["errors"]:
-                st.error(msg)
-        else:
-            render_assessment(out["res"])
+    st.divider()
+    if not out:
+        st.markdown('<div class="empty"><b>Your result will appear here</b><br>'
+                    'Fill in the tables above (or click <i>Load example</i>) and press <i>Run risk assessment</i>.</div>',
+                    unsafe_allow_html=True)
+    elif "errors" in out:
+        for msg in out["errors"]:
+            st.error(msg)
+    else:
+        render_assessment(out["res"])
     st.caption("Screening aid only, not investment advice. Scores combine published formulas with a small ML layer trained on a handful of Indian banks.")
 
 # ============================================================================= Portfolio overview
@@ -444,19 +507,19 @@ with tab_demo:
     else:
         band_cards(d)
         st.markdown("### Risk score over time")
-        st.altair_chart(risk_chart(d), width="stretch")
+        show_chart(risk_chart(d))
         st.caption("Shaded bands: Low 0-33, Medium 33-66, High 66-100.")
         c1, c2 = st.columns(2, gap="large")
         with c1:
             st.markdown("### Altman Z''-EM")
-            st.altair_chart(z_chart(d), width="stretch")
+            show_chart(z_chart(d))
         with c2:
             st.markdown("### Beneish M-score")
-            st.altair_chart(m_chart(d, -1.78), width="stretch")
+            show_chart(m_chart(d, -1.78))
         st.markdown("### Bank-level detail")
         show_table(d, ["bank", "fy", "risk_score", "risk_band", "z_em", "z_zone", "m_score", "m_flag_a", "joint_signal",
                        "anomaly_percentile", "structural_break", "n_estimated_fields"])
-        st.download_button("Download scores (CSV)", d.to_csv(index=False), "demo_scores.csv", "text/csv")
+        st.download_button("⬇ Download scores (CSV)", d.to_csv(index=False), "demo_scores.csv", "text/csv")
 
 # ============================================================================= Bulk analysis
 RESULT_COLS = ["bank", "fy", "risk_score", "risk_band", "z_em", "z_zone", "m_score", "m_flag_a", "m_flag_b", "joint_signal",
@@ -475,7 +538,7 @@ with tab_batch:
         st.markdown("### Template and columns")
         template = pd.read_csv(DATA / "bank_panel.csv")
         template = template[(template["bank"] == "Yes Bank") & template["fy"].isin(["FY2019", "FY2020"])].drop(columns=["n_estimated_fields"], errors="ignore")
-        st.download_button("Download CSV template", template.to_csv(index=False), "template.csv", "text/csv", width="stretch")
+        st.download_button("⬇ Download CSV template", template.to_csv(index=False), "template.csv", "text/csv", width="stretch")
         with st.expander("Required columns"):
             st.write("**Minimum:**", ", ".join(REQUIRED_MINIMUM))
             st.write("**For a reliable M-score and ML features:**", ", ".join(c for c in INVESTOR_REQUIRED if c not in REQUIRED_MINIMUM))
@@ -508,12 +571,15 @@ with tab_batch:
             b = st.selectbox("Focus on one bank", ["All banks"] + sorted(pred["bank"].astype(str).unique()))
             view = pred if b == "All banks" else pred[pred["bank"].astype(str) == b]
             st.markdown("### Risk score over time")
-            st.altair_chart(risk_chart(view, 260), width="stretch")
+            show_chart(risk_chart(view, 260))
             c1, c2 = st.columns(2, gap="large")
-            c1.altair_chart(z_chart(view, 260), width="stretch")
-            c2.altair_chart(m_chart(view, m_cut, 260), width="stretch")
+            with c1:
+                show_chart(z_chart(view, 260))
+            with c2:
+                show_chart(m_chart(view, m_cut, 260))
+            st.markdown("### Results")
             show_table(view, RESULT_COLS)
-            st.download_button("Download results (CSV)", view[[c for c in RESULT_COLS if c in view.columns]].to_csv(index=False),
+            st.download_button("⬇ Download results (CSV)", view[[c for c in RESULT_COLS if c in view.columns]].to_csv(index=False),
                                "scored_results.csv", "text/csv")
 
 # ============================================================================= Model validation
@@ -539,8 +605,8 @@ with tab_val:
         ch = alt.Chart(cd).mark_bar(cornerRadiusEnd=4).encode(
             y=alt.Y("feature:N", sort="-x", title=None), x=alt.X("coefficient:Q", title="Standardised coefficient (+ raises risk)"),
             color=alt.condition("datum.coefficient > 0", alt.value(BAND["High"]["solid"]), alt.value(BAND["Low"]["solid"])),
-            tooltip=["feature", alt.Tooltip("coefficient:Q", format=".3f")]).properties(height=240)
-        st.altair_chart(style_chart(ch), width="stretch")
+            tooltip=["feature", alt.Tooltip("coefficient:Q", format=".3f")]).properties(height=260)
+        show_chart(style_chart(ch))
     if st.button("Retrain models from data/"):
         train_and_save(verbose=False)
         st.cache_data.clear()
@@ -560,6 +626,7 @@ with tab_about:
         st.markdown("Weights are a judgement call, not learned. **Low** < 33 ≤ **Medium** < 66 ≤ **High**. Merger years are capped at Medium "
                     "because Beneish indices are not comparable across a merger.")
     with c2:
-        st.markdown("### Limitations")
-        st.markdown("1. Much of the input data is estimated.\n2. One distressed bank, so the early-warning model cannot be validated.\n"
-                    "3. Z'' over-triggers on banks; Beneish M is weak on banks.\n4. Merger years are tagged `structural_break`.")
+        with st.container(border=True):
+            st.markdown("### Limitations")
+            st.markdown("1. Much of the input data is estimated.\n2. One distressed bank, so the early-warning model cannot be validated.\n"
+                        "3. Z'' over-triggers on banks; Beneish M is weak on banks.\n4. Merger years are tagged `structural_break`.")
