@@ -159,9 +159,15 @@ class RiskModels:
         else:
             out["early_warning_prob"] = np.nan
         out["structural_break"] = flag_structural_breaks(out, events)
-        out["risk_tier"] = assign_risk_tier(out)
+
         ew_ok = bool(self.report.get("early_warning", {}).get("validated", False))
-        out = pd.concat([out, investment_risk_score(out, ew_validated=ew_ok)], axis=1)
+
+        out["risk_tier"] = assign_risk_tier(out, ew_validated=ew_ok)
+
+        out = pd.concat(
+            [out, investment_risk_score(out, ew_validated=ew_ok)],
+            axis=1
+        )       
         return out
 
     # ---- persistence
@@ -179,7 +185,7 @@ def _frame(df: pd.DataFrame, cols) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- transparent rules
-def assign_risk_tier(p: pd.DataFrame) -> pd.Series:
+def assign_risk_tier(p: pd.DataFrame,ew_validated:bool = True) -> pd.Series:
     """Hand-written, auditable rules (NOT learned):
 
     High   : Z + M both flag, OR early-warning prob >= 0.50, OR anomaly percentile >= 95
@@ -189,7 +195,10 @@ def assign_risk_tier(p: pd.DataFrame) -> pd.Series:
     A structural break (merger year) caps the tier at Watch, because the M indices are not comparable
     across a merger and would otherwise read as manipulation.
     """
-    ew = p["early_warning_prob"].fillna(0)
+    if ew_validated:
+        ew = p["early_warning_prob"].fillna(0)
+    else:
+        ew = pd.Series(0.0, index=p.index)
     high = p["joint_signal"].eq("Z + M both flag") | (ew >= 0.5) | (p["anomaly_percentile"] >= 95)
     watch = (p["z_zone"].eq("Distress") | p["m_flag_a"].eq("Flag") | p["m_flag_b"].eq("Flag")
              | (p["anomaly_percentile"] >= 85) | (ew >= 0.25))
@@ -276,7 +285,13 @@ def event_validation(pred: pd.DataFrame, labels: pd.Series) -> pd.DataFrame:
     """
     y = labels.reindex(pred.index)
     # tier recomputed WITHOUT the (in-sample trained) early-warning model, so this row is not circular
-    tier_unsup = assign_risk_tier(pred.assign(early_warning_prob=np.nan))
+    # Tier without early-warning, for the rules + anomaly validation rows
+    tier_unsup = assign_risk_tier(pred, ew_validated=False)
+
+    # Separate row that deliberately includes early-warning,
+    # even when it is in-sample and not validated
+    tier_with_ew = assign_risk_tier(pred, ew_validated=True)
+
     signals = {
         "Z'' zone = Distress": pred["z_zone"].eq("Distress"),
         "M flag (cut-off -1.78)": pred["m_flag_a"].eq("Flag"),
@@ -285,7 +300,7 @@ def event_validation(pred: pd.DataFrame, labels: pd.Series) -> pd.DataFrame:
         "Anomaly pct >= 90": pred["anomaly_percentile"] >= 90,
         "Tier High (rules + anomaly only)": tier_unsup.eq("High"),
         "Tier High or Watch (rules + anomaly only)": tier_unsup.isin(["High", "Watch"]),
-        "Tier High (incl. in-sample early-warning)": pred["risk_tier"].eq("High"),
+        "Tier High (incl. in-sample early-warning)": tier_with_ew.eq("High"),
     }
     computable = {
         "Z'' zone = Distress": pred["z_zone"].ne("n/a"),

@@ -17,6 +17,73 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+
+st.markdown("""
+<style>
+/* Modern investor-facing typography */
+# @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+# :root {
+#     --dashboard-font: 'Inter', -apple-system, BlinkMacSystemFont,
+#                       'Segoe UI', sans-serif;
+# }
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+    --dashboard-font: 'IBM Plex Sans', sans-serif;
+}
+
+/* Main application text — do not override icon fonts */
+.stApp,
+.stApp p,
+.stApp label,
+.stApp input,
+.stApp textarea,
+.stApp button,
+.stApp [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stMetricLabel"],
+.stApp [data-testid="stMetricValue"] {
+    font-family: var(--dashboard-font) !important;
+}
+
+/* Headings */
+.stApp h1,
+.stApp h2,
+.stApp h3 {
+    font-family: var(--dashboard-font) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.5px;
+    color: #102A43;
+}
+
+/* KPI card labels */
+.kpi-label {
+    font-family: var(--dashboard-font) !important;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+}
+
+/* KPI numbers */
+.kpi-value {
+    font-family: var(--dashboard-font) !important;
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    color: #102A43;
+}
+
+/* Preserve Streamlit's built-in icon fonts */
+[data-testid="stIconMaterial"],
+.material-icons,
+.material-symbols-rounded,
+.material-symbols-outlined {
+    font-family: "Material Symbols Rounded", "Material Icons" !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -246,13 +313,17 @@ def show_table(df: pd.DataFrame, cols: list[str]):
     light_table(df[cols], colour_cols=sub, bar_cols=("risk_score", "anomaly_percentile"))
 
 
-def band_cards(df: pd.DataFrame):
-    cols = st.columns(4)
+def band_cards(df):
+    bands = ["Low", "Medium", "High", "Insufficient data"]
+    cols = st.columns(len(bands))
     total = max(len(df), 1)
-    for col, t in zip(cols, ["High", "Medium", "Low", "Insufficient data"]):
-        n = int((df["risk_band"] == t).sum())
-        col.markdown(kpi(t, str(n), f"{n / total:.0%} of bank-years", BAND[t]["solid"]), unsafe_allow_html=True)
 
+    for col, t in zip(cols, bands):
+        n = int((df["risk_band"] == t).sum())
+        col.markdown(
+            kpi(t, str(n), "&nbsp;", BAND[t]["solid"]),
+            unsafe_allow_html=True
+        )
 
 def style_chart(ch):
     return (ch.configure(background="#ffffff", padding={"left": 8, "right": 12, "top": 10, "bottom": 6})
@@ -287,7 +358,11 @@ def _ref_line(y: float, color: str, label: str):
 
 
 def risk_chart(df: pd.DataFrame, height=300):
-    d = _prep(df, "risk_score")
+    d = df.copy()
+    # Exclude rows without sufficient feature coverage
+    if "risk_band" in d.columns:
+        d = d[d["risk_band"] != "Insufficient data"].copy()
+    d = _prep(d, "risk_score")
     bands = pd.DataFrame({"lo": [0, 33, 66], "hi": [33, 66, 100], "c": ["#e1f6e9", "#fff1c9", "#fde3e1"]})
     bg = alt.Chart(bands).mark_rect().encode(y=alt.Y("lo:Q", scale=alt.Scale(domain=[0, 100])), y2="hi:Q", color=alt.Color("c:N", scale=None))
     ln = alt.Chart(d).mark_line(point=alt.OverlayMarkDef(size=70), strokeWidth=2.4).encode(
@@ -339,13 +414,22 @@ def get_demo_panel() -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------------------- sidebar
-st.sidebar.markdown("### ⚙️ Analysis settings")
-st.sidebar.caption("Assumptions used by **Assess a bank** and **Bulk analysis**.")
-x3 = st.sidebar.radio("Altman X3 definition", [1, 2], format_func=lambda v: {1: "PBT / total assets", 2: "(PBT + interest) / total assets"}[v])
-recv = st.sidebar.radio("Beneish receivables proxy", [2, 1], format_func=lambda v: {1: "Interest receivable", 2: "Net / gross advances"}[v])
-jc = st.sidebar.radio("Beneish cut-off", [1, 2], format_func=lambda v: {1: "-1.78 (standard)", 2: "-2.22 (stricter)"}[v])
-tax = st.sidebar.slider("Assumed tax rate", 0.0, 0.5, 0.25, 0.01, help="Only used when profit before tax is not entered.")
-neutral = st.sidebar.checkbox("Neutral-fill missing Beneish indices", value=False, help="Treat missing indices as 1.0.")
+st.sidebar.markdown("### ⚙️ Settings")
+st.sidebar.caption("Applies to single-bank and bulk analysis.")
+
+jc = st.sidebar.radio(
+    "Manipulation check (Beneish M)", [1, 2],
+    format_func=lambda v: {1: "Standard (flag above -1.78)", 2: "More sensitive (flag above -2.22)"}[v],
+    help="A lower cut-off flags more companies.")
+
+with st.sidebar.expander("Advanced"):
+    x3 = st.radio("Profit used in Altman Z''", [1, 2],
+                  format_func=lambda v: {1: "Profit before tax", 2: "Profit before tax + interest"}[v])
+    recv = st.radio("Receivables measure", [2, 1],
+                    format_func=lambda v: {1: "Interest receivable", 2: "Advances"}[v])
+    tax = st.slider("Assumed tax rate", 0.0, 0.5, 0.25, 0.01, help="Only used when profit before tax is not entered.")
+    neutral = st.checkbox("Fill missing Beneish values neutrally", value=False)
+
 params = Params(x3_definition=x3, receivables_proxy=recv, joint_cutoff=jc, assumed_tax_rate=tax, neutral_fill=neutral)
 m_cut = params.m_cutoff() if callable(params.m_cutoff) else params.m_cutoff
 
@@ -360,8 +444,8 @@ st.markdown("""
 is not validated (one distressed bank in the panel). Outputs are screening signals, not audited findings or investment advice.</div>
 """, unsafe_allow_html=True)
 
-tab_assess, tab_demo, tab_batch, tab_val, tab_about = st.tabs(
-    ["🏦 Assess a bank", "📊 Portfolio overview", "📁 Bulk analysis", "✅ Model validation", "📘 Methodology"])
+tab_assess, tab_demo, tab_batch, tab_val = st.tabs(
+    ["🏦 Assess a bank", "📊 Portfolio overview", "📁 Bulk analysis", "✅ Model validation"])
 
 # ============================================================================= Assess a bank
 LABELS = {
@@ -464,22 +548,13 @@ def render_assessment(res: dict):
     if score is not None:
         st.markdown(risk_meter(score), unsafe_allow_html=True)
 
-    left, right = st.columns([3, 2], gap="large")
-    with left:
-        with st.container(border=True):
-            st.markdown("**Why this score**")
-            if res["main_driver"]:
-                st.markdown(f"Biggest contributor: **{res['main_driver']}**")
-            for r in res["reasons"]:
-                st.markdown(f"- {r}")
-    with right:
-        with st.container(border=True):
-            st.markdown("**Score breakdown**")
-            parts = {k_: v for k_, v in res["score_parts"].items() if v is not None}
-            if parts:
-                st.altair_chart(parts_chart(parts), width="stretch", theme=None)
-            else:
-                st.caption("No components could be computed.")
+    with st.container(border=True):
+        st.markdown("**Score breakdown**")
+        parts = {k_: v for k_, v in res["score_parts"].items() if v is not None}
+        if parts:
+            st.altair_chart(parts_chart(parts), width="stretch", theme=None)
+        else:
+            st.caption("No components could be computed.")
 
     important = [w for w in res["warnings"] if "early-warning" not in w]
     with st.expander(f"Data checks & notes ({len(res['warnings'])})", expanded=bool(important)):
@@ -577,14 +652,40 @@ RESULT_COLS = ["bank", "fy", "risk_score", "risk_band", "z_em", "z_zone", "m_sco
                "anomaly_percentile", "early_warning_prob", "risk_tier", "structural_break", "x1_liquidity", "x2_reserves_ta",
                "x3_profit_ta", "x4_mcap_liab", "dsri", "gmi", "aqi", "sgi", "depi", "sgai", "lvgi", "tata",
                "boyd_graham_z", "roa", "nim", "feature_coverage", "input_notes"]
+
+def clear_saved_portfolio():
+    saved_upload_dir = OUTPUTS / "saved_upload"
+
+    if saved_upload_dir.exists():
+        for f in saved_upload_dir.glob("portfolio_upload.*"):
+            f.unlink(missing_ok=True)
+
+    # Use a separate flag instead of modifying the uploader's state
+    st.session_state["portfolio_cleared"] = True
 with tab_batch:
     left, right = st.columns([3, 2], gap="large")
     with left:
         st.markdown("### Upload a portfolio")
         st.markdown('<div class="hint">CSV or XLSX with <b>at least 2 consecutive years per bank</b> (3 for Boyd-Graham). '
                     'Column names can be snake_case or the original workbook headers.</div>', unsafe_allow_html=True)
-        up = st.file_uploader("Upload CSV or XLSX", type=["csv", "xlsx", "xlsm", "xls"], label_visibility="collapsed")
-        use_demo = st.checkbox("Use the bundled panel instead (data/bank_panel.csv)", value=up is None)
+        if st.session_state.pop("portfolio_cleared", False):
+            st.session_state.pop("portfolio_upload", None)
+
+        up = st.file_uploader(
+            "Upload CSV or XLSX",
+            type=["csv", "xlsx", "xlsm", "xls"],
+            label_visibility="collapsed",
+            key="portfolio_upload",
+        )
+
+        use_demo = st.checkbox(
+            "Use the bundled panel instead (data/bank_panel.csv)",
+            value=False,
+        )
+        st.button("Clear uploaded portfolio", key="clear_portfolio", on_click=clear_saved_portfolio)
+
+        saved_upload_dir = OUTPUTS / "saved_upload"
+        saved_upload_dir.mkdir(parents=True, exist_ok=True)
     with right:
         st.markdown("### Template and columns")
         template = pd.read_csv(DATA / "bank_panel.csv")
@@ -595,43 +696,106 @@ with tab_batch:
             st.write("**For a reliable M-score and ML features:**", ", ".join(c for c in INVESTOR_REQUIRED if c not in REQUIRED_MINIMUM))
             st.caption("gnpa / nnpa / crar are fractions (0.05 = 5%). FY format: FY2019, 2019 or 2018-19.")
 
-    raw = None
-    if up is not None:
-        try:
-            raw = read_table(up, up.name)
-        except Exception as e:  # noqa: BLE001
-            st.error(f"Could not read file: {e}")
-    elif use_demo:
-        raw = pd.read_csv(DATA / "bank_panel.csv")
 
-    if raw is not None:
-        st.divider()
-        with st.expander(f"Input preview ({len(raw)} rows)"):
-            light_table(raw.head(50))
+raw = None
+source_name = None
+
+if up is not None:
+    # Save the uploaded file
+    suffix = Path(up.name).suffix.lower()
+    saved_path = saved_upload_dir / f"portfolio_upload{suffix}"
+
+    # Remove an older upload with a different extension
+    for old_file in saved_upload_dir.glob("portfolio_upload.*"):
+        if old_file != saved_path:
+            old_file.unlink(missing_ok=True)
+
+    saved_path.write_bytes(up.getvalue())
+    source_name = up.name
+
+    try:
+        raw = read_table(saved_path, source_name)
+    except Exception as e:
+        st.error(f"Could not read file: {e}")
+
+elif use_demo:
+    # Load demo data only when explicitly selected
+    try:
+        raw = pd.read_csv(DATA / "bank_panel.csv")
+    except Exception as e:
+        st.error(f"Could not load demo data: {e}")
+
+else:
+    # Restore the previous upload after a browser refresh
+    saved_files = list(saved_upload_dir.glob("portfolio_upload.*"))
+
+    if saved_files:
+        saved_path = saved_files[0]
+        source_name = saved_path.name
+
         try:
-            pred, warns = score_frame(raw, params, strict=False)
-        except ValueError as e:
-            for msg in e.args[0]:
-                st.error(msg)
-        else:
-            if warns:
-                with st.expander(f"Data checks & notes ({len(warns)})"):
-                    for w in warns:
-                        st.caption("• " + w)
-            band_cards(pred)
-            b = st.selectbox("Focus on one bank", ["All banks"] + sorted(pred["bank"].astype(str).unique()))
-            view = pred if b == "All banks" else pred[pred["bank"].astype(str) == b]
-            st.markdown("### Risk score over time")
-            show_chart(risk_chart(view, 260))
-            c1, c2 = st.columns(2, gap="large")
-            with c1:
-                show_chart(z_chart(view, 260))
-            with c2:
-                show_chart(m_chart(view, m_cut, 260))
-            st.markdown("### Results")
-            show_table(view, RESULT_COLS)
-            st.download_button("⬇ Download results (CSV)", view[[c for c in RESULT_COLS if c in view.columns]].to_csv(index=False),
-                               "scored_results.csv", "text/csv")
+            raw = read_table(saved_path, source_name)
+        except Exception as e:
+            st.error(f"Could not restore the uploaded file: {e}")
+
+# Display dashboard results only when data is available
+if raw is not None:
+    st.divider()
+
+    with st.expander(f"Input preview ({len(raw)} rows)"):
+        light_table(raw.head(50))
+
+    try:
+        pred, warns = score_frame(raw, params, strict=False)
+
+    except ValueError as e:
+        for msg in e.args[0]:
+            st.error(msg)
+
+    else:
+        if warns:
+            with st.expander(f"Data checks & notes ({len(warns)})"):
+                for w in warns:
+                    st.caption("• " + w)
+
+        band_cards(pred)
+
+        b = st.selectbox(
+            "Focus on one bank",
+            ["All banks"] + sorted(pred["bank"].astype(str).unique()),
+        )
+
+        view = (
+            pred if b == "All banks"
+            else pred[pred["bank"].astype(str) == b]
+        )
+
+        st.markdown("### Risk score over time")
+        show_chart(risk_chart(view, 260))
+
+        c1, c2 = st.columns(2, gap="large")
+
+        with c1:
+            show_chart(z_chart(view, 260))
+
+        with c2:
+            show_chart(m_chart(view, m_cut, 260))
+
+        st.markdown("### Results")
+        show_table(view, RESULT_COLS)
+
+        st.download_button(
+            "⬇ Download results (CSV)",
+            view[
+                [c for c in RESULT_COLS if c in view.columns]
+            ].to_csv(index=False),
+            "scored_results.csv",
+            "text/csv",
+        )
+
+else:
+    st.info("Upload a portfolio CSV or Excel file to view risk statistics and results.")
+
 
 # ============================================================================= Model validation
 with tab_val:
@@ -662,21 +826,3 @@ with tab_val:
         train_and_save(verbose=False)
         st.cache_data.clear()
         st.success("Retrained. Reload the page to see updated outputs.")
-
-# ============================================================================= Methodology
-with tab_about:
-    c1, c2 = st.columns([3, 2], gap="large")
-    with c1:
-        st.markdown("### How the risk score is built")
-        light_table(pd.DataFrame({
-            "Component": ["Altman Z''-EM", "Beneish M-score", "Anomaly model", "Early-warning model"],
-            "Weight": ["35%", "20%", "25%", "20% (off until validated)"],
-            "What it measures": ["Financial strength: Safe > 5.85, Distress < 4.35", "Earnings-quality / manipulation signal, flag above -1.78",
-                                 "How unusual the financial pattern is vs. training banks (Isolation Forest)", "Probability of a distress event within a year"]}))
-        st.markdown("Weights are a judgement call, not learned. **Low** < 33 ≤ **Medium** < 66 ≤ **High**. Merger years are capped at Medium "
-                    "because Beneish indices are not comparable across a merger.")
-    with c2:
-        with st.container(border=True):
-            st.markdown("### Limitations")
-            st.markdown("1. Much of the input data is estimated.\n2. One distressed bank, so the early-warning model cannot be validated.\n"
-                        "3. Z'' over-triggers on banks; Beneish M is weak on banks.\n4. Merger years are tagged `structural_break`.")
