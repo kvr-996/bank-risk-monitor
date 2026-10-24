@@ -149,6 +149,10 @@ def fill_derived_fields(df: pd.DataFrame, p: Params) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------- Altman Z''
+CLASSIC_Z_WEIGHTS = (1.2, 1.4, 3.3, 0.6, 1.0)      # Altman (1968)
+CLASSIC_Z_SAFE, CLASSIC_Z_DISTRESS = 2.99, 1.81
+
+
 def altman_z(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     ta, tl = df["total_assets"], df["total_liabilities"]
     out = pd.DataFrame(index=df.index)
@@ -159,6 +163,9 @@ def altman_z(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     else:
         out["x3_profit_ta"] = (df["pbt"] + df["interest_expense"]) / ta
     out["x4_mcap_liab"] = df["market_cap"] / tl
+    # X5 (sales / total assets) -> total income / total assets. NOT used by Z'' (Altman drops it for non-manufacturers),
+    # but it is the fifth ratio of the classic Altman Z, computed below for reference.
+    out["x5_income_ta"] = df["total_income"] / ta
     comps = out[["x1_liquidity", "x2_reserves_ta", "x3_profit_ta", "x4_mcap_liab"]]
     raw = (p.w_x1 * comps["x1_liquidity"] + p.w_x2 * comps["x2_reserves_ta"]
            + p.w_x3 * comps["x3_profit_ta"] + p.w_x4 * comps["x4_mcap_liab"])
@@ -167,6 +174,16 @@ def altman_z(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     out["z_em"] = raw + p.em_constant
     zone = np.where(out["z_em"] > p.z_safe, "Safe", np.where(out["z_em"] < p.z_distress, "Distress", "Grey"))
     out["z_zone"] = np.where(out["z_em"].isna(), "n/a", zone)
+
+    # Classic Altman Z (1968), five ratios: 1.2*X1 + 1.4*X2 + 3.3*X3 + 0.6*X4 + 1.0*X5 ; Safe > 2.99, Distress < 1.81.
+    # Built for US manufacturers - on banks X1 is a liquidity proxy and X5 is income/assets, so read it as a reference only.
+    five = out[["x1_liquidity", "x2_reserves_ta", "x3_profit_ta", "x4_mcap_liab", "x5_income_ta"]]
+    classic = (CLASSIC_Z_WEIGHTS[0] * five["x1_liquidity"] + CLASSIC_Z_WEIGHTS[1] * five["x2_reserves_ta"]
+               + CLASSIC_Z_WEIGHTS[2] * five["x3_profit_ta"] + CLASSIC_Z_WEIGHTS[3] * five["x4_mcap_liab"]
+               + CLASSIC_Z_WEIGHTS[4] * five["x5_income_ta"])
+    out["z_classic"] = classic.where(five.notna().all(axis=1))
+    czone = np.where(out["z_classic"] > CLASSIC_Z_SAFE, "Safe", np.where(out["z_classic"] < CLASSIC_Z_DISTRESS, "Distress", "Grey"))
+    out["z_classic_zone"] = np.where(out["z_classic"].isna(), "n/a", czone)
     return out
 
 

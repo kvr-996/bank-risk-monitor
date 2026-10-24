@@ -167,7 +167,7 @@ def assess_company(df: pd.DataFrame, params: Params | None = None) -> dict:
     if pred["bank"].nunique() != 1:
         raise ValueError(["Enter one company at a time."])
     r = pred.sort_values("fy_num").iloc[-1]
-    keep = ["x1_liquidity", "x2_reserves_ta", "x3_profit_ta", "x4_mcap_liab", "dsri", "gmi", "aqi", "sgi", "depi",
+    keep = ["x1_liquidity", "x2_reserves_ta", "x3_profit_ta", "x4_mcap_liab", "x5_income_ta", "dsri", "gmi", "aqi", "sgi", "depi",
             "sgai", "lvgi", "tata"]
     return {
         "company": r["bank"], "fy": r["fy"],
@@ -178,7 +178,7 @@ def assess_company(df: pd.DataFrame, params: Params | None = None) -> dict:
         "joint_signal": r["joint_signal"], "anomaly_percentile": None if pd.isna(r["anomaly_percentile"]) else float(r["anomaly_percentile"]),
         "reasons": explain_row(r), "warnings": warns,
         "components": {k: (None if pd.isna(r[k]) else float(r[k])) for k in keep},
-        "score_parts": {k: (None if pd.isna(r[f"risk_part_{k}"]) or (k == "ew" and not load_models().report["early_warning"].get("validated", False)) else float(r[f"risk_part_{k}"])) for k in ["z", "m", "anom", "ew"]},        
+        "score_parts": {k: (None if pd.isna(r[f"risk_part_{k}"]) else float(r[f"risk_part_{k}"])) for k in ["z", "m", "anom", "ew"]},
         "input_notes": r["input_notes"],
         "history": json_safe(pred.sort_values("fy_num")[["fy", "z_em", "m_score", "risk_score", "risk_band"]]),
     }
