@@ -1201,15 +1201,7 @@ def render_bank(bank, data, banks):
     **Cumulative risk score (0-100, higher = riskier)** blends three signals:
     Altman Z''-EM (bank-adapted), Beneish M (bank-mapped) and an unsupervised anomaly model. The early-warning model is excluded until it can be validated.
     Bands: Low 0-33, Medium 33-66, High 66-100.
-
-    **Altman Z''-EM** = 6.56·X1 + 3.26·X2 + 6.72·X3 + 1.05·X4 + 3.25, with Safe > 5.85 and Distress < 4.35.
-    **Five-ratio Z.** Altman Z'' deliberately drops X5 (sales/assets) for non-manufacturers, so the score uses X1-X4. The classic Altman Z (1968) uses all five ratios (1.2·X1 + 1.4·X2 + 3.3·X3 + 0.6·X4 + 1.0·X5; safe > 2.99, distress < 1.81) and is shown for reference; it was built for US manufacturers.
-
-**Beneish M** uses the eight-variable model; a score above -1.78 is flagged.
-
-    **Limits.** Z'' zones over-trigger on banks and M is a weak signal for banks. The panel contains one distressed bank (Yes Bank, FY2020),
-    so validation is indicative only. Merger years are capped at Medium. Many inputs are estimates; this screener is a research tool, not investment advice.
-    """)
+""")
 
 
 def open_bank(name: str):
